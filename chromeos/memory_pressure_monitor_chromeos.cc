@@ -2,10 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/chromeos/memory_pressure_observer_chromeos.h"
+#include "base/chromeos/memory_pressure_monitor_chromeos.h"
+
+#include <fcntl.h>
+#include <sys/select.h>
 
 #include "base/message_loop/message_loop.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/posix/eintr_wrapper.h"
 #include "base/process/process_metrics.h"
 #include "base/time/time.h"
 
@@ -26,7 +30,7 @@ const int kModerateMemoryPressureCooldown =
 
 // Threshold constants to emit pressure events.
 const int kNormalMemoryPressureModerateThresholdPercent = 60;
-const int kNormalMemoryPressureCriticalThresholdPercent = 90;
+const int kNormalMemoryPressureCriticalThresholdPercent = 95;
 const int kAggressiveMemoryPressureModerateThresholdPercent = 35;
 const int kAggressiveMemoryPressureCriticalThresholdPercent = 70;
 
@@ -40,13 +44,18 @@ enum MemoryPressureLevelUMA {
   NUM_MEMORY_PRESSURE_LEVELS
 };
 
+// This is the file that will exist if low memory notification is available
+// on the device.  Whenever it becomes readable, it signals a low memory
+// condition.
+const char kLowMemFile[] = "/dev/chromeos-low-mem";
+
 // Converts a |MemoryPressureThreshold| value into a used memory percentage for
 // the moderate pressure event.
 int GetModerateMemoryThresholdInPercent(
-    MemoryPressureObserverChromeOS::MemoryPressureThresholds thresholds) {
-  return thresholds == MemoryPressureObserverChromeOS::
+    MemoryPressureMonitorChromeOS::MemoryPressureThresholds thresholds) {
+  return thresholds == MemoryPressureMonitorChromeOS::
                            THRESHOLD_AGGRESSIVE_CACHE_DISCARD ||
-         thresholds == MemoryPressureObserverChromeOS::THRESHOLD_AGGRESSIVE
+         thresholds == MemoryPressureMonitorChromeOS::THRESHOLD_AGGRESSIVE
              ? kAggressiveMemoryPressureModerateThresholdPercent
              : kNormalMemoryPressureModerateThresholdPercent;
 }
@@ -54,10 +63,10 @@ int GetModerateMemoryThresholdInPercent(
 // Converts a |MemoryPressureThreshold| value into a used memory percentage for
 // the critical pressure event.
 int GetCriticalMemoryThresholdInPercent(
-    MemoryPressureObserverChromeOS::MemoryPressureThresholds thresholds) {
-  return thresholds == MemoryPressureObserverChromeOS::
+    MemoryPressureMonitorChromeOS::MemoryPressureThresholds thresholds) {
+  return thresholds == MemoryPressureMonitorChromeOS::
                            THRESHOLD_AGGRESSIVE_TAB_DISCARD ||
-         thresholds == MemoryPressureObserverChromeOS::THRESHOLD_AGGRESSIVE
+         thresholds == MemoryPressureMonitorChromeOS::THRESHOLD_AGGRESSIVE
              ? kAggressiveMemoryPressureCriticalThresholdPercent
              : kNormalMemoryPressureCriticalThresholdPercent;
 }
@@ -74,9 +83,24 @@ MemoryPressureListener::MemoryPressureLevel GetMemoryPressureLevelFromFillLevel(
              : MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL;
 }
 
+// This function will be called less then once a second. It will check if
+// the kernel has detected a low memory situation.
+bool IsLowMemoryCondition(int file_descriptor) {
+  fd_set fds;
+  struct timeval tv;
+
+  FD_ZERO(&fds);
+  FD_SET(file_descriptor, &fds);
+
+  tv.tv_sec = 0;
+  tv.tv_usec = 0;
+
+  return HANDLE_EINTR(select(file_descriptor + 1, &fds, NULL, NULL, &tv)) > 0;
+}
+
 }  // namespace
 
-MemoryPressureObserverChromeOS::MemoryPressureObserverChromeOS(
+MemoryPressureMonitorChromeOS::MemoryPressureMonitorChromeOS(
     MemoryPressureThresholds thresholds)
     : current_memory_pressure_level_(
           MemoryPressureListener::MEMORY_PRESSURE_LEVEL_NONE),
@@ -85,35 +109,42 @@ MemoryPressureObserverChromeOS::MemoryPressureObserverChromeOS(
           GetModerateMemoryThresholdInPercent(thresholds)),
       critical_pressure_threshold_percent_(
           GetCriticalMemoryThresholdInPercent(thresholds)),
+      low_mem_file_(HANDLE_EINTR(::open(kLowMemFile, O_RDONLY))),
       weak_ptr_factory_(this) {
   StartObserving();
+  LOG_IF(ERROR, !low_mem_file_.is_valid()) << "Cannot open kernel listener";
 }
 
-MemoryPressureObserverChromeOS::~MemoryPressureObserverChromeOS() {
+MemoryPressureMonitorChromeOS::~MemoryPressureMonitorChromeOS() {
   StopObserving();
 }
 
-void MemoryPressureObserverChromeOS::ScheduleEarlyCheck() {
+void MemoryPressureMonitorChromeOS::ScheduleEarlyCheck() {
   MessageLoop::current()->PostTask(
       FROM_HERE,
-      Bind(&MemoryPressureObserverChromeOS::CheckMemoryPressure,
+      Bind(&MemoryPressureMonitorChromeOS::CheckMemoryPressure,
            weak_ptr_factory_.GetWeakPtr()));
 }
 
-void MemoryPressureObserverChromeOS::StartObserving() {
+MemoryPressureListener::MemoryPressureLevel
+MemoryPressureMonitorChromeOS::GetCurrentPressureLevel() const {
+  return current_memory_pressure_level_;
+}
+
+void MemoryPressureMonitorChromeOS::StartObserving() {
   timer_.Start(FROM_HERE,
                TimeDelta::FromMilliseconds(kMemoryPressureIntervalMs),
-               Bind(&MemoryPressureObserverChromeOS::
+               Bind(&MemoryPressureMonitorChromeOS::
                         CheckMemoryPressureAndRecordStatistics,
                     weak_ptr_factory_.GetWeakPtr()));
 }
 
-void MemoryPressureObserverChromeOS::StopObserving() {
+void MemoryPressureMonitorChromeOS::StopObserving() {
   // If StartObserving failed, StopObserving will still get called.
   timer_.Stop();
 }
 
-void MemoryPressureObserverChromeOS::CheckMemoryPressureAndRecordStatistics() {
+void MemoryPressureMonitorChromeOS::CheckMemoryPressureAndRecordStatistics() {
   CheckMemoryPressure();
 
   // Record UMA histogram statistics for the current memory pressure level.
@@ -135,13 +166,35 @@ void MemoryPressureObserverChromeOS::CheckMemoryPressureAndRecordStatistics() {
                             NUM_MEMORY_PRESSURE_LEVELS);
 }
 
-void MemoryPressureObserverChromeOS::CheckMemoryPressure() {
+void MemoryPressureMonitorChromeOS::CheckMemoryPressure() {
   MemoryPressureListener::MemoryPressureLevel old_pressure =
       current_memory_pressure_level_;
-  current_memory_pressure_level_ =
-      GetMemoryPressureLevelFromFillLevel(GetUsedMemoryInPercent(),
-                                          moderate_pressure_threshold_percent_,
-                                          critical_pressure_threshold_percent_);
+
+  // If we have the kernel low memory observer, we use it's flag instead of our
+  // own computation (for now). Note that in "simulation mode" it can be null.
+  // TODO(skuhne): We need to add code which makes sure that the kernel and this
+  // computation come to similar results and then remove this override again.
+  // TODO(skuhne): Add some testing framework here to see how close the kernel
+  // and the internal functions are.
+  if (low_mem_file_.is_valid() && IsLowMemoryCondition(low_mem_file_.get())) {
+    current_memory_pressure_level_ =
+        MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL;
+  } else {
+    current_memory_pressure_level_ = GetMemoryPressureLevelFromFillLevel(
+        GetUsedMemoryInPercent(),
+        moderate_pressure_threshold_percent_,
+        critical_pressure_threshold_percent_);
+
+    // When listening to the kernel, we ignore the reported memory pressure
+    // level from our own computation and reduce critical to moderate.
+    if (low_mem_file_.is_valid() &&
+        current_memory_pressure_level_ ==
+        MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL) {
+      current_memory_pressure_level_ =
+          MemoryPressureListener::MEMORY_PRESSURE_LEVEL_MODERATE;
+    }
+  }
+
   // In case there is no memory pressure we do not notify.
   if (current_memory_pressure_level_ ==
       MemoryPressureListener::MEMORY_PRESSURE_LEVEL_NONE) {
@@ -171,7 +224,7 @@ void MemoryPressureObserverChromeOS::CheckMemoryPressure() {
 }
 
 // Gets the used ChromeOS memory in percent.
-int MemoryPressureObserverChromeOS::GetUsedMemoryInPercent() {
+int MemoryPressureMonitorChromeOS::GetUsedMemoryInPercent() {
   base::SystemMemoryInfoKB info;
   if (!base::GetSystemMemoryInfo(&info)) {
     VLOG(1) << "Cannot determine the free memory of the system.";
