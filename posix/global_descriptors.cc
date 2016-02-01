@@ -11,6 +11,9 @@
 
 namespace base {
 
+// static
+const int GlobalDescriptors::kBaseDescriptor;
+
 GlobalDescriptors::Descriptor::Descriptor(Key key, int fd)
     : key(key), fd(fd), region(base::MemoryMappedFile::Region::kWholeFile) {
 }
