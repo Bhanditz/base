@@ -276,7 +276,6 @@ component("base") {
     "mac/bundle_locations.mm",
     "mac/call_with_eh_frame.cc",
     "mac/call_with_eh_frame.h",
-    "mac/call_with_eh_frame_asm.S",
     "mac/cocoa_protocols.h",
     "mac/dispatch_source_mach.cc",
     "mac/dispatch_source_mach.h",
@@ -642,6 +641,13 @@ component("base") {
     "win/wrapped_window_proc.cc",
     "win/wrapped_window_proc.h",
   ]
+
+
+  if (current_cpu == "x64") {
+    sources += [ "mac/call_with_eh_frame_asm.S" ]
+  } else {
+    sources += [ "mac/call_with_eh_frame_fallback.cc" ]
+  }
 
   sources -= [
     "sys_info_freebsd.cc",
