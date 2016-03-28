@@ -76,18 +76,6 @@
 
 #endif  // MAC_OS_X_VERSION_10_9
 
-#if !defined(MAC_OS_X_VERSION_10_10) || \
-    MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_10
-
-@interface NSUserActivity : NSObject
-@end
-
-#else
-
-@class NSUserActivity;
-
-#endif  // MAC_OS_X_VERSION_10_10
-
 // ----------------------------------------------------------------------------
 // Define typedefs, enums, and protocols not available in the version of the
 // OSX SDK being compiled against.
@@ -467,29 +455,6 @@ BASE_EXPORT extern NSString* const NSAppearanceNameVibrantDark;
 @end
 
 #endif  // MAC_OS_X_VERSION_10_9
-
-// Once Chrome no longer supports OSX 10.9, everything within this preprocessor
-// block can be removed.
-#if !defined(MAC_OS_X_VERSION_10_10) || \
-    MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_10
-
-@interface NSUserActivity (YosemiteSDK)
-
-@property(readonly, copy) NSString* activityType;
-@property(copy) NSDictionary* userInfo;
-@property(copy) NSURL* webpageURL;
-
-- (instancetype)initWithActivityType:(NSString*)activityType;
-- (void)becomeCurrent;
-- (void)invalidate;
-
-@end
-
-@interface CBUUID (YosemiteSDK)
-- (NSString*)UUIDString;
-@end
-
-#endif  // MAC_OS_X_VERSION_10_10
 
 // ----------------------------------------------------------------------------
 // Chrome uses -[CWNetwork securityMode] and -[CWNetwork rssi] on OSX 10.6. The
