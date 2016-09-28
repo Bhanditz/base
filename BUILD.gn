@@ -986,7 +986,10 @@ component("i18n") {
     "i18n/utf8_validator_tables.h",
   ]
   defines = [ "BASE_I18N_IMPLEMENTATION" ]
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+  configs += [
+    "//build/config/compiler:wexit_time_destructors",
+    "//third_party/icu:icu_config",
+  ]
   deps = [
     ":base",
     "//base/third_party/dynamic_annotations",

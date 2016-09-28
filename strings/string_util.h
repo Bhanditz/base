@@ -21,6 +21,10 @@
 
 namespace base {
 
+#if defined(vsnprintf)
+#undef vsnprintf
+#endif  // defined(vsnprintf)
+
 // C standard-library functions that aren't cross-platform are provided as
 // "base::...", and their prototypes are listed below. These functions are
 // then implemented as inline calls to the platform-specific equivalents in the
@@ -33,6 +37,10 @@ int vsnprintf(char* buffer, size_t size, const char* format, va_list arguments)
     PRINTF_FORMAT(3, 0);
 
 // Some of these implementations need to be inlined.
+
+#if defined(snprintf)
+#undef snprintf
+#endif  // defined(snprintf)
 
 // We separate the declaration from the implementation of this inline
 // function just so the PRINTF_FORMAT works.
