@@ -22,16 +22,10 @@
 // Either define or forward declare classes only available in OSX 10.7+.
 // ----------------------------------------------------------------------------
 
-#if !defined(MAC_OS_X_VERSION_10_7) || !defined(MAC_OS_X_VERSION_10_8) || \
+#if !defined(MAC_OS_X_VERSION_10_7) || \
     MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_7
 
 @interface CWChannel : NSObject
-@end
-
-@interface CBPeripheral : NSObject
-@end
-
-@interface CBCentralManager : NSObject
 @end
 
 @interface CBUUID : NSObject
@@ -40,8 +34,6 @@
 #else
 
 @class CWChannel;
-@class CBPeripheral;
-@class CBCentralManager;
 @class CBUUID;
 
 #endif  // MAC_OS_X_VERSION_10_7
@@ -162,33 +154,6 @@ enum {
 - (void)deviceInquiryComplete:(IOBluetoothDeviceInquiry*)sender
                         error:(IOReturn)error
                       aborted:(BOOL)aborted;
-@end
-
-enum {
-  CBPeripheralStateDisconnected = 0,
-  CBPeripheralStateConnecting,
-  CBPeripheralStateConnected,
-};
-typedef NSInteger CBPeripheralState;
-
-enum {
-  CBCentralManagerStateUnknown = 0,
-  CBCentralManagerStateResetting,
-  CBCentralManagerStateUnsupported,
-  CBCentralManagerStateUnauthorized,
-  CBCentralManagerStatePoweredOff,
-  CBCentralManagerStatePoweredOn,
-};
-typedef NSInteger CBCentralManagerState;
-
-@protocol CBCentralManagerDelegate;
-
-@protocol CBCentralManagerDelegate<NSObject>
-- (void)centralManagerDidUpdateState:(CBCentralManager*)central;
-- (void)centralManager:(CBCentralManager*)central
-    didDiscoverPeripheral:(CBPeripheral*)peripheral
-        advertisementData:(NSDictionary*)advertisementData
-                     RSSI:(NSNumber*)RSSI;
 @end
 
 #endif  // MAC_OS_X_VERSION_10_7
@@ -358,21 +323,6 @@ BASE_EXPORT extern NSString* const NSAppearanceNameVibrantDark;
 - (IOReturn)performSDPQuery:(id)target uuids:(NSArray*)uuids;
 @end
 
-@interface CBPeripheral (LionSDK)
-@property(readonly, nonatomic) CFUUIDRef UUID;
-@property(retain, readonly) NSString* name;
-@property(readonly) BOOL isConnected;
-@end
-
-@interface CBCentralManager (LionSDK)
-@property(readonly) CBCentralManagerState state;
-- (id)initWithDelegate:(id<CBCentralManagerDelegate>)delegate
-                 queue:(dispatch_queue_t)queue;
-- (void)scanForPeripheralsWithServices:(NSArray*)serviceUUIDs
-                               options:(NSDictionary*)options;
-- (void)stopScan;
-@end
-
 @interface CBUUID (LionSDK)
 @property(nonatomic, readonly) NSData* data;
 + (CBUUID*)UUIDWithString:(NSString*)theString;
@@ -448,10 +398,6 @@ BASE_EXPORT extern NSString* const NSAppearanceNameVibrantDark;
 
 @interface NSAppearance (MavericksSDK)
 + (id<NSObject>)appearanceNamed:(NSString*)name;
-@end
-
-@interface CBPeripheral (MavericksSDK)
-@property(readonly, nonatomic) NSUUID* identifier;
 @end
 
 #endif  // MAC_OS_X_VERSION_10_9
